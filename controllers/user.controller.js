@@ -48,6 +48,7 @@ const registerUser = async (req, res) => {
     const transporter = nodemailer.createTransport({
       host: process.env.MAILTRAP_HOST,
       port: process.env.MAILTRAP_PORT,
+      secure: false,
       auth: {
         user: process.env.MAILTRAP_USER,
         pass: process.env.MAILTRAP_PASSWORD,
@@ -61,7 +62,18 @@ const registerUser = async (req, res) => {
       text: `Please click on the below url to verify:
       ${process.env.BASE_URL}/api/v1/users/verify/${token}
       `,
-      html: "<b>subscribe</b>",
+      html: `
+    <div style="font-family: Arial, sans-serif; padding: 20px;">
+      <h2>Verify Your Email</h2>
+      <p>Please click the button below to verify your email address:</p>
+      <a href="${process.env.BASE_URL}/api/v1/users/verify/${token}" 
+         style="display: inline-block; padding: 10px 20px; background-color: #4CAF50; color: white; 
+                text-decoration: none; border-radius: 5px; margin-top: 10px;">
+        Verify Email
+      </a>
+      <p>If you didn’t request this, you can safely ignore this email.</p>
+    </div>
+  `,
     };
 
     await transporter.sendMail(mailOptions);
@@ -121,7 +133,7 @@ const loginUser = async (req, res) => {
   }
 
   try {
-    const user = await User.findOne({email});
+    const user = await User.findOne({ email });
     if (!user) {
       return res.status(400).json({
         success: false,
@@ -139,35 +151,107 @@ const loginUser = async (req, res) => {
       });
     }
 
-    const token = jwt.sign({ id: user._id }, "shhhhh", {expiresIn:'24h'});
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+      // expiresIn: "24h", 
+    });
 
     const cookieOption = {
       httpOnly: true,
-      secure:true,
-      maxAge: 86400
-    }
-    res.cookie('test',token, cookieOption)
+      secure: true,
+      maxAge: 24*60*60*1000, // 24 hours
+    };
+
+    res.cookie("token", token, cookieOption);
     res.status(200).json({
-      success:true,
-      message:'Login successfull',
+      success: true,
+      message: "Login successfull",
       token,
-      user:{
-        id:user._id,
-        name:user.name,
-        role:user.role,
-        password:user.password
-      }
-    })
+      user: {
+        id: user._id,
+        name: user.name,
+        role: user.role,
+        password: user.password,
+      },
+    });
   } catch (error) {
     console.log(error);
-    
+
     res.status(400).json({
       success: false,
       message: "User not registered ",
       error: error,
     });
-    
   }
 };
 
-export { registerUser, verifyUser, loginUser };
+const getProfile = async (req, res) => {
+  try {
+    console.log("reached here");
+
+    const user = await User.findById(req.user.id).select(
+      "-password -verificationToken -verificationTokenExpires -resetPasswordToken -resetPasswordTokenExpires"
+    );
+
+    console.log(user);
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      message: "User found",
+      user,
+    });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+    });
+  }
+};
+
+const logoutUser = async (req, res) => {
+  try {
+    // res.clearCookie("token", {
+    //   httpOnly: true,
+    //   secure: true,
+    //   sameSite: "None",
+    // });
+
+    res.cookie("token", "", {
+      expires: new Date(Date.now()),
+      httpOnly: true,
+      secure: true,
+      sameSite: "None",
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Logout successful",
+    });
+  } catch (error) {}
+};
+
+const forgotPassword = async (req, res) => {
+  try {
+  } catch (error) {}
+};
+
+const resetPassword = async (req, res) => {
+  try {
+  } catch (error) {}
+};
+
+export {
+  registerUser,
+  verifyUser,
+  loginUser,
+  getProfile,
+  forgotPassword,
+  resetPassword,
+  logoutUser,
+};
