@@ -152,13 +152,13 @@ const loginUser = async (req, res) => {
     }
 
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      // expiresIn: "24h", 
+      // expiresIn: "24h",
     });
 
     const cookieOption = {
       httpOnly: true,
       secure: true,
-      maxAge: 24*60*60*1000, // 24 hours
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
     };
 
     res.cookie("token", token, cookieOption);
@@ -237,13 +237,117 @@ const logoutUser = async (req, res) => {
 };
 
 const forgotPassword = async (req, res) => {
+  // get email, find user in the db, set reset passwordtoken, reset password token expires, user.save , send email with the link to reset password.
+  const { email } = req.body;
+  console.log(email);
+  if (!email) {
+    return res.status(400).json({
+      success: false,
+      message: "Please provide email",
+    });
+  }
   try {
-  } catch (error) {}
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const token = crypto.randomBytes(32).toString("hex");
+    user.resetPasswordToken = token;
+    user.resetPasswordTokenExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
+    await user.save();
+
+    // send email with the link to reset password
+    const transporter = nodemailer.createTransport({
+      host: process.env.MAILTRAP_HOST,
+      port: process.env.MAILTRAP_PORT,
+      secure: false,
+      auth: {
+        user: process.env.MAILTRAP_USER,
+        pass: process.env.MAILTRAP_PASSWORD,
+      },
+    });
+
+    const mailOptions = {
+      from: process.env.MAILTRAP_SENDER_EMAIL,
+      to: user.email,
+      subject: "Reset your password",
+      text: `Please click on the below url to reset your password:
+        ${process.env.BASE_URL}/api/v1/users/reset/${token}
+        `,
+      html: `
+      <div style="font-family: Arial, sans-serif; padding: 20px;">
+        <h2>Reset Your Password</h2>
+        <p>Please click the button below to reset your password:</p>
+        <a href="${process.env.BASE_URL}/api/v1/users/reset/${token}" 
+           style="display: inline-block; padding: 10px 20px; background-color: #4CAF50; color: white; 
+                  text-decoration: none; border-radius: 5px; margin-top: 10px;">
+          Reset Password
+        </a>
+        <p>If you didn’t request this, you can safely ignore this email.</p>
+      </div>
+    `,
+    };
+
+    await transporter.sendMail(mailOptions);
+    res.status(200).json({
+      success: true,
+      message: "Reset password link sent to your email",
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+    });
+  }
 };
 
 const resetPassword = async (req, res) => {
+  // get token from params, get password from body, get user from db, set password, set reset password token to undefined, set reset password token expires to undefined, save user.
+  const { token } = req.params;
+  const { password } = req.body;
+
   try {
-  } catch (error) {}
+    const user = await User.findOne({
+      resetPasswordToken: token,
+      resetPasswordTokenExpires: { $gt: Date.now() },
+    })
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired token",
+      });
+    }
+    if (!password) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide password",
+      });
+    }
+
+    user.password = password;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordTokenExpires = undefined;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Password reset successfully",
+    });
+
+
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+    });
+  }
 };
 
 export {
